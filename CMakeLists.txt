@@ -3,6 +3,8 @@ project(zkfinger)
 
 set(CMAKE_CXX_STANDARD 20)
 
+option(ZKFP_ENABLE_ALGO "Enable zkfinger10 algorithm" ON)
+
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(LIBUSB QUIET libusb-1.0)
@@ -46,6 +48,26 @@ if(NOT LIBUSB_CFLAGS_OTHER)
     set(LIBUSB_CFLAGS_OTHER "")
 endif()
 
+
+if(ZKFP_ENABLE_ALGO)
+    set(IDKIT_ROOT "" CACHE PATH "libidkit root")
+    if(IDKIT_ROOT)
+        list(APPEND CMAKE_PREFIX_PATH "${IDKIT_ROOT}")
+    endif()
+
+    find_library(IDKIT_LIBRARIES
+        NAMES idkit libidkit
+        HINTS ${IDKIT_ROOT}
+        PATH_SUFFIXES lib lib64
+    )
+
+    if(NOT IDKIT_LIBRARIES)
+        message(FATAL_ERROR "libidkit not found. Set -DIDKIT_ROOT=/path/to/libidkit")
+    endif()
+
+
+endif()
+
 add_library(zkfp SHARED
     src/zkfp.cpp
     src/sensor_libusb.cpp
@@ -63,17 +85,26 @@ target_compile_options(zkfp PRIVATE
     ${LIBUSB_CFLAGS_OTHER}
 )
 
-add_library(zkfinger10 SHARED
-    src/zkfinger10.cpp
-)
-target_include_directories(zkfinger10 PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+target_compile_definitions(zkfp PRIVATE ZKFP_ENABLE_ALGO=$<BOOL:${ZKFP_ENABLE_ALGO}>)
 
-target_link_libraries(zkfp PRIVATE
-    zkfinger10
-)
+if(ZKFP_ENABLE_ALGO)
+    add_library(zkfinger10 SHARED
+        src/zkfinger10.cpp
+    )
+    target_include_directories(zkfinger10 PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
 
+    target_link_libraries(zkfinger10 PRIVATE
+        ${IDKIT_LIBRARIES}
+    )
+
+    target_link_libraries(zkfp PRIVATE
+        zkfinger10
+    )
+
+
+endif()
 
 add_executable(zkfp_capture_test
     test/capture_image.cpp
@@ -83,5 +114,10 @@ target_include_directories(zkfp_capture_test PUBLIC
 )
 target_link_libraries(zkfp_capture_test PRIVATE
     zkfp
-    zkfinger10
 )
+
+if(ZKFP_ENABLE_ALGO)
+    target_link_libraries(zkfp_capture_test PRIVATE
+        zkfinger10
+    )
+endif()

@@ -8,6 +8,10 @@
 #include <vector>
 #include <sys/time.h>
 
+#ifndef ZKFP_ENABLE_ALGO
+#define ZKFP_ENABLE_ALGO 1
+#endif
+
 extern "C" {
 int sensorInit();
 int sensorFree();
@@ -20,6 +24,7 @@ int sensorGetParameterEx(void *handle, int paramCode, unsigned char *paramValue,
 int sensorGetParameter(void *handle, int paramCode);
 int sensorCheckLic(void *handle, unsigned int v1, void *v2);
 
+#if ZKFP_ENABLE_ALGO
 void *BIOKEY_INIT(long a1, const void *cfg, long a3, long a4, long a5);
 int BIOKEY_CLOSE();
 int BIOKEY_SET_CHECK_CALLBACK(int (*cb)(unsigned int, void *), void *user);
@@ -37,6 +42,23 @@ int BIOKEY_EXTRACT_GRAYSCALEDATA(void *db, const unsigned char *image, unsigned 
                                  unsigned char *out, unsigned int outLen, int flag);
 int BIOKEY_IDENTIFYTEMP(void *db, const unsigned char *templ, unsigned int size, unsigned int *fid);
 int BIOKEY_GETLASTERROR();
+#else
+static inline void *BIOKEY_INIT(long, const void *, long, long, long) { return nullptr; }
+static inline int BIOKEY_CLOSE() { return 0; }
+static inline int BIOKEY_SET_CHECK_CALLBACK(int (*)(unsigned int, void *), void *) { return 0; }
+static inline int BIOKEY_SET_PARAMETER(void *, long, long) { return 0; }
+static inline int BIOKEY_GET_PARAMETER(void *, long, int *) { return 0; }
+static inline int BIOKEY_MATCHINGPARAM(void *, long, unsigned int) { return 0; }
+static inline int BIOKEY_DB_CLEAR(void *) { return 0; }
+static inline int BIOKEY_DB_ADD(void *, unsigned int, unsigned int, unsigned char *) { return 0; }
+static inline int BIOKEY_DB_DEL(void *, unsigned int) { return 0; }
+static inline int BIOKEY_VERIFY(void *, const unsigned char *, const unsigned char *) { return 0; }
+static inline int BIOKEY_VERIFYBYID(void *, unsigned int, const unsigned char *) { return 0; }
+static inline int BIOKEY_GENTEMPLATE_SP(void *, const unsigned char *, const unsigned char *, const unsigned char *, int, unsigned char *) { return 0; }
+static inline int BIOKEY_EXTRACT_GRAYSCALEDATA(void *, const unsigned char *, unsigned int, unsigned int, unsigned char *, unsigned int, int) { return 0; }
+static inline int BIOKEY_IDENTIFYTEMP(void *, const unsigned char *, unsigned int, unsigned int *) { return 0; }
+static inline int BIOKEY_GETLASTERROR() { return 0; }
+#endif
 }
 
 namespace {
@@ -82,6 +104,11 @@ static unsigned int GetTickCount() {
 }
 
 static void InitFP(int width, int height) {
+#if !ZKFP_ENABLE_ALGO
+  (void)width;
+  (void)height;
+  return;
+#endif
   if (g_DBCacheHandle.db) {
     return;
   }
@@ -201,9 +228,11 @@ int APICALL ZKFPM_Init() {
 
 int APICALL ZKFPM_Terminate() {
   if (g_bInited) {
+#if ZKFP_ENABLE_ALGO
     if (g_DBCacheHandle.db) {
       BIOKEY_CLOSE();
     }
+#endif
     std::memset(&g_DBCacheHandle, 0, sizeof(g_DBCacheHandle));
     sensorFree();
     g_bInited = 0;
@@ -240,6 +269,7 @@ HANDLE APICALL ZKFPM_OpenDevice(int index) {
 
   g_hDevice = sensor;
   InitFP(static_cast<int>(dev->width), static_cast<int>(dev->height));
+#if ZKFP_ENABLE_ALGO
   if (g_DBCacheHandle.db) {
     return dev;
   }
@@ -247,6 +277,9 @@ HANDLE APICALL ZKFPM_OpenDevice(int index) {
   std::puts("Init zkfinger10 failed");
   operator delete(dev);
   return nullptr;
+#else
+  return dev;
+#endif
 }
 
 int APICALL ZKFPM_CloseDevice(HANDLE hDevice) {
@@ -279,6 +312,9 @@ int APICALL ZKFPM_SetParameters(HANDLE hDevice, int nParamCode, unsigned char *p
   }
 
   if (nParamCode == 10001) {
+#if !ZKFP_ENABLE_ALGO
+    return ZKFP_ERR_NOT_SUPPORT;
+#endif
     if (cbParamValue <= 3 || !paramValue) {
       return ZKFP_ERR_INVALID_PARAM;
     }
@@ -315,6 +351,9 @@ int APICALL ZKFPM_GetParameters(HANDLE hDevice, int nParamCode, unsigned char *p
   }
 
   if (nParamCode == 10001) {
+#if !ZKFP_ENABLE_ALGO
+    return ZKFP_ERR_NOT_SUPPORT;
+#endif
     if (!cbParamValue || *cbParamValue <= 3 || !paramValue) {
       return ZKFP_ERR_INVALID_PARAM;
     }
@@ -382,6 +421,10 @@ int APICALL ZKFPM_AcquireFingerprintImage(HANDLE hDevice, unsigned char *fpImage
 
 int APICALL ZKFPM_AcquireFingerprint(HANDLE hDevice, unsigned char *fpImage, unsigned int cbFPImage,
                                     unsigned char *fpTemplate, unsigned int *cbTemplate) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   auto *dev = static_cast<DeviceHandle *>(hDevice);
   if (!dev || !fpImage || !fpTemplate || !cbTemplate || *cbTemplate <= 0) {
     return ZKFP_ERR_INVALID_PARAM;
@@ -412,61 +455,117 @@ int APICALL ZKFPM_AcquireFingerprint(HANDLE hDevice, unsigned char *fpImage, uns
 }
 
 HANDLE APICALL ZKFPM_DBInit() {
+#if !ZKFP_ENABLE_ALGO
+  return nullptr;
+#endif
+
   return ZKFPM_CreateDBCache();
 }
 
 int APICALL ZKFPM_DBFree(HANDLE hDBCache) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_CloseDBCache(hDBCache);
 }
 
 int APICALL ZKFPM_DBSetParameter(HANDLE, int, unsigned char *, unsigned int) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFP_ERR_NOT_SUPPORT;
 }
 
 int APICALL ZKFPM_DBGetParameter(HANDLE, int, unsigned char *, unsigned int) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFP_ERR_NOT_SUPPORT;
 }
 
 int APICALL ZKFPM_DBMerge(HANDLE hDBCache, unsigned char *temp1, unsigned char *temp2, unsigned char *temp3,
                           unsigned char *regTemp, unsigned int *cbRegTemp) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_GenRegTemplate(hDBCache, temp1, temp2, temp3, regTemp, cbRegTemp);
 }
 
 int APICALL ZKFPM_DBAdd(HANDLE hDBCache, unsigned int fid, unsigned char *fpTemplate, unsigned int cbTemplate) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_AddRegTemplateToDBCache(hDBCache, fid, fpTemplate, cbTemplate);
 }
 
 int APICALL ZKFPM_DBDel(HANDLE hDBCache, unsigned int fid) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_DelRegTemplateFromDBCache(hDBCache, fid);
 }
 
 int APICALL ZKFPM_DBClear(HANDLE hDBCache) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_ClearDBCache(hDBCache);
 }
 
 int APICALL ZKFPM_DBCount(HANDLE hDBCache, unsigned int *fpCount) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_GetDBCacheCount(hDBCache, fpCount);
 }
 
 int APICALL ZKFPM_DBIdentify(HANDLE hDBCache, unsigned char *fpTemplate, unsigned int cbTemplate,
                              unsigned int *FID, unsigned int *score) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_Identify(hDBCache, fpTemplate, cbTemplate, FID, score);
 }
 
 int APICALL ZKFPM_DBMatch(HANDLE hDBCache, unsigned char *template1, unsigned int cbTemplate1,
                           unsigned char *template2, unsigned int cbTemplate2) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFPM_MatchFinger(hDBCache, template1, cbTemplate1, template2, cbTemplate2);
 }
 
 int APICALL ZKFPM_ExtractFromImage(HANDLE, const char *, unsigned int, unsigned char *, unsigned int *) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return ZKFP_ERR_NOT_SUPPORT;
 }
 
 HANDLE APICALL ZKFPM_CreateDBCache() {
+#if !ZKFP_ENABLE_ALGO
+  return nullptr;
+#endif
+
   return &g_DBCacheHandle;
 }
 
 int APICALL ZKFPM_CloseDBCache(HANDLE hDBCache) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -476,6 +575,10 @@ int APICALL ZKFPM_CloseDBCache(HANDLE hDBCache) {
 }
 
 int APICALL ZKFPM_ClearDBCache(HANDLE hDBCache) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -485,6 +588,10 @@ int APICALL ZKFPM_ClearDBCache(HANDLE hDBCache) {
 }
 
 int APICALL ZKFPM_GetDBCacheCount(HANDLE hDBCache, unsigned int *fpCount) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -497,6 +604,10 @@ int APICALL ZKFPM_GetDBCacheCount(HANDLE hDBCache, unsigned int *fpCount) {
 
 int APICALL ZKFPM_AddRegTemplateToDBCache(HANDLE hDBCache, unsigned int fid, unsigned char *fpTemplate,
                                          unsigned int cbTemplate) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -514,6 +625,10 @@ int APICALL ZKFPM_AddRegTemplateToDBCache(HANDLE hDBCache, unsigned int fid, uns
 }
 
 int APICALL ZKFPM_DelRegTemplateFromDBCache(HANDLE hDBCache, unsigned int fid) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -524,6 +639,10 @@ int APICALL ZKFPM_DelRegTemplateFromDBCache(HANDLE hDBCache, unsigned int fid) {
 
 int APICALL ZKFPM_GenRegTemplate(HANDLE hDBCache, unsigned char *temp1, unsigned char *temp2,
                                 unsigned char *temp3, unsigned char *regTemp, unsigned int *cbRegTemp) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -546,6 +665,10 @@ int APICALL ZKFPM_GenRegTemplate(HANDLE hDBCache, unsigned char *temp1, unsigned
 
 int APICALL ZKFPM_Identify(HANDLE hDBCache, unsigned char *fpTemplate, unsigned int cbTemplate,
                            unsigned int *FID, unsigned int *score) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -571,6 +694,10 @@ int APICALL ZKFPM_Identify(HANDLE hDBCache, unsigned char *fpTemplate, unsigned 
 
 int APICALL ZKFPM_MatchFinger(HANDLE hDBCache, unsigned char *template1, unsigned int cbTemplate1,
                               unsigned char *template2, unsigned int cbTemplate2) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -586,6 +713,10 @@ int APICALL ZKFPM_MatchFinger(HANDLE hDBCache, unsigned char *template1, unsigne
 
 int APICALL ZKFPM_VerifyByID(HANDLE hDBCache, unsigned int fid, unsigned char *fpTemplate,
                              unsigned int cbTemplate) {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   if (!IsValidDBHandle(hDBCache)) {
     return ZKFP_ERR_INVALID_HANDLE;
   }
@@ -600,6 +731,10 @@ int APICALL ZKFPM_VerifyByID(HANDLE hDBCache, unsigned int fid, unsigned char *f
 }
 
 int APICALL ZKFPM_GetLastExtractImage() {
+#if !ZKFP_ENABLE_ALGO
+  return ZKFP_ERR_NOT_SUPPORT;
+#endif
+
   return 0;
 }
 
