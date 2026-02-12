@@ -24,7 +24,7 @@ void *BIOKEY_INIT(long a1, const void *cfg, long a3, long a4, long a5);
 int BIOKEY_CLOSE();
 int BIOKEY_SET_CHECK_CALLBACK(int (*cb)(unsigned int, void *), void *user);
 int BIOKEY_SET_PARAMETER(void *db, long code, long value);
-int BIOKEY_GET_PARAMETER(void *db, long code, long value, int *out);
+int BIOKEY_GET_PARAMETER(void *db, long code, int *out);
 int BIOKEY_MATCHINGPARAM(void *db, long type, unsigned int value);
 int BIOKEY_DB_CLEAR(void *db);
 int BIOKEY_DB_ADD(void *db, unsigned int fid, unsigned int size, unsigned char *templ);
